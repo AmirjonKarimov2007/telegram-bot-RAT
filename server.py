@@ -8,7 +8,7 @@ TOKEN = "7754620943:AAESsQB-tTOxNlpgr9yfhieOR5ua4enR5DU"
 
 app = Flask(__name__)
 
-# Telegram Application yaratamiz
+# Telegram Application yaratamiz (polling emas!)
 application = Application.builder().token(TOKEN).build()
 
 # --------------------
@@ -26,10 +26,9 @@ application.add_handler(CommandHandler("start", start))
 # Flask route (webhook uchun)
 # --------------------
 @app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
+async def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    # asyncio da put qilish kerak
-    asyncio.get_event_loop().create_task(application.update_queue.put(update))
+    await application.process_update(update)   # to‘g‘ri usul!
     return "ok", 200
 
 # --------------------
@@ -38,6 +37,3 @@ def webhook():
 @app.route("/")
 def index():
     return "Bot ishlayapti (webhook rejimi)"
-
-# Alwaysdata uWSGI Flaskni avtomatik ishga tushiradi,
-# shuning uchun application.run_webhook() kerak emas!
