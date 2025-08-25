@@ -82,6 +82,9 @@ def telegram_handler(command):
 
     return jsonify({"status": "ok"})
 
+@app.get("/hello")
+def hello():
+    return "Hello World"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
