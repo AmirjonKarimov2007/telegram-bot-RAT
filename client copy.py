@@ -109,7 +109,7 @@ async def command_cmd(update, context):
 # START FUNCTIONS
 # -------------------------
 def run_flask():
-    app.run(host="0.0.0.0", port=4000)
+    app.run(host="0.0.0.0", port=4010)
 
 def run_telegram():
     app_tg = Application.builder().token(BOT_TOKEN).build()

