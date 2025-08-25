@@ -7,7 +7,7 @@ from telegram import Bot
 # --------------------
 # Config
 # --------------------
-BOT_TOKEN = "7754620943:AAGDtVt1o2SAZNvKtrNoJ725tW1htQBsflw"
+BOT_TOKEN = "7754620943:AAESsQB-tTOxNlpgr9yfhieOR5ua4enR5DU"
 ADMIN_CHAT_ID = 1612270615  # faqat sizning ID
 
 bot = Bot(BOT_TOKEN)
