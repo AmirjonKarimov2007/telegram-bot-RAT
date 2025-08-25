@@ -2,8 +2,8 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler
 
-TOKEN = "BOT_TOKEN"   # <-- o'z tokeningizni yozing
 ADMIN_CHAT_ID = 1612270615
+TOKEN = "7754620943:AAESsQB-tTOxNlpgr9yfhieOR5ua4enR5DU"
 
 app = Flask(__name__)
 
